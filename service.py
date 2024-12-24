@@ -39,12 +39,14 @@ class FluxImage2Image:
         image: Image,
         prompt: str,
         num_inference_steps: int = 4,
+        strength: float = 0.6,
     ) -> Image:
         image = self.pipe(
             prompt=prompt,
             image=image,
             num_inference_steps=num_inference_steps,
             guidance_scale=0.0,
+            strength=strength,
         ).images[0]
         return image
 
@@ -115,11 +117,15 @@ class Flux:
         prompt: str,
         image: Image,
         num_inference_steps: int = 4,
+        strength: float = 0.6,
     ) -> Image:
-        image = await self.img2img_service.predict(
-            prompt=prompt, image=image, num_inference_steps=num_inference_steps
+        gen_image = await self.img2img_service.predict(
+            prompt=prompt,
+            image=image,
+            num_inference_steps=num_inference_steps,
+            strength=strength,
         )
-        return image
+        return gen_image.resize((image.width, image.height))
 
 
 def optimize(pipe, compile=True):
