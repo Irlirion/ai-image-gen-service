@@ -19,7 +19,7 @@ sample_prompt = (
     },
 )
 class FluxImage2Image:
-    model_path = HuggingFaceModel("black-forest-labs/FLUX.1-schnell")
+    model_path = HuggingFaceModel("black-forest-labs/FLUX.1-dev")
 
     def __init__(self) -> None:
         import torch
@@ -38,15 +38,18 @@ class FluxImage2Image:
         self,
         image: Image,
         prompt: str,
-        num_inference_steps: int = 4,
+        num_inference_steps: int = 50,
         strength: float = 0.6,
+        guidance_scale: float = 3.5,
     ) -> Image:
         image = self.pipe(
             prompt=prompt,
             image=image,
             num_inference_steps=num_inference_steps,
-            guidance_scale=0.0,
+            guidance_scale=guidance_scale,
             strength=strength,
+            height=image.height,
+            width=image.width,
         ).images[0]
         return image
 
@@ -61,7 +64,7 @@ class FluxImage2Image:
     },
 )
 class FluxText2Image:
-    model_path = HuggingFaceModel("black-forest-labs/FLUX.1-schnell")
+    model_path = HuggingFaceModel("black-forest-labs/FLUX.1-dev")
 
     def __init__(self) -> None:
         import torch
@@ -79,12 +82,17 @@ class FluxText2Image:
     async def predict(
         self,
         prompt: str = sample_prompt,
-        num_inference_steps: int = 4,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 3.5,
+        height: int = 1024,
+        width: int = 1024,
     ) -> Image:
         image = self.pipe(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
-            guidance_scale=0.0,
+            guidance_scale=guidance_scale,
+            height=height,
+            width=width,
         ).images[0]
         return image
 
@@ -93,7 +101,7 @@ class FluxText2Image:
     traffic={
         "timeout": 300,
     },
-    workers=2,
+    workers=1,
 )
 class Flux:
     text2img_service = bentoml.depends(FluxText2Image)
@@ -103,11 +111,17 @@ class Flux:
     async def txt2img(
         self,
         prompt: str = sample_prompt,
-        num_inference_steps: int = 4,
+        num_inference_steps: int = 50,
+        guidance_scale: float = 3.5,
+        height: int = 1024,
+        width: int = 1024,
     ) -> Image:
         image = await self.text2img_service.predict(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
+            guidance_scale=guidance_scale,
+            height=height,
+            width=width,
         )
         return image
 
@@ -116,16 +130,18 @@ class Flux:
         self,
         prompt: str,
         image: Image,
-        num_inference_steps: int = 4,
+        num_inference_steps: int = 50,
         strength: float = 0.6,
+        guidance_scale: float = 3.5,
     ) -> Image:
-        gen_image = await self.img2img_service.predict(
+        image = await self.img2img_service.predict(
             prompt=prompt,
             image=image,
             num_inference_steps=num_inference_steps,
             strength=strength,
+            guidance_scale=guidance_scale,
         )
-        return gen_image.resize((image.width, image.height))
+        return image
 
 
 def optimize(pipe, compile=True):
@@ -168,13 +184,13 @@ def optimize(pipe, compile=True):
             "dummy prompt to trigger torch compilation",
             image=PIL.Image.new("RGB", (1024, 1024)),
             output_type="pil",
-            num_inference_steps=4,  # use ~50 for [dev], smaller for [schnell]
+            num_inference_steps=50,  # use ~50 for [dev], smaller for [schnell]
         ).images[0]
     elif isinstance(pipe, FluxPipeline):
         pipe(
             "dummy prompt to trigger torch compilation",
             output_type="pil",
-            num_inference_steps=4,  # use ~50 for [dev], smaller for [schnell]
+            num_inference_steps=50,  # use ~50 for [dev], smaller for [schnell]
         ).images[0]
     else:
         raise ValueError("Unsupported pipeline type, received %s" % type(pipe))
