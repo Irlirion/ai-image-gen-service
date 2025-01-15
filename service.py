@@ -1,6 +1,6 @@
 import bentoml
 from bentoml.models import HuggingFaceModel
-from PIL.Image import Image
+from PIL.Image import Image as PILImage
 
 sample_prompt = (
     "A cinematic shot of a baby racoon wearing an intricate italian priest robe."
@@ -39,8 +39,8 @@ class FluxText2Image:
         guidance_scale: float = 3.5,
         height: int = 1024,
         width: int = 1024,
-    ) -> Image:
-        images: list[Image] = self.pipe(
+    ) -> PILImage:
+        images: list[PILImage] = self.pipe(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
             guidance_scale=guidance_scale,
@@ -113,7 +113,7 @@ class Flux:
         guidance_scale: float = 3.5,
         height: int = 1024,
         width: int = 1024,
-    ) -> Image:
+    ) -> PILImage:
         return await self.text2img_service.predict(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
