@@ -1,6 +1,3 @@
-import base64
-import io
-
 import bentoml
 from bentoml.models import HuggingFaceModel
 from PIL.Image import Image
@@ -42,14 +39,7 @@ class FluxText2Image:
         guidance_scale: float = 3.5,
         height: int = 1024,
         width: int = 1024,
-    ) -> dict[str, list[str]]:
-        def encode_image(image: Image) -> str:
-            buffer = io.BytesIO()
-            image.save(buffer, "JPEG")
-            image_bytes = buffer.getvalue()
-            encoded_image = base64.b64encode(image_bytes).decode("utf-8")
-            return encoded_image
-
+    ) -> Image:
         images: list[Image] = self.pipe(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
@@ -57,9 +47,52 @@ class FluxText2Image:
             height=height,
             width=width,
             max_sequence_length=512,
-            num_images_per_prompt=4,
+            num_images_per_prompt=1,
         ).images
-        return {"images": [encode_image(image) for image in images]}
+        return images[0]
+
+
+@bentoml.service(
+    traffic={
+        "timeout": 300,
+    },
+    workers=1,
+    resources={
+        "gpu": 1,
+    },
+)
+class Text2Text:
+    model_path = HuggingFaceModel("google/gemma-2-9b-it")
+
+    def __init__(self) -> None:
+        import torch
+        from transformers import pipeline
+
+        torch.set_float32_matmul_precision("high")
+
+        self.pipe = pipeline(
+            "text-generation",
+            model=self.model_path,
+            model_kwargs={"torch_dtype": torch.bfloat16},
+            device="cuda",
+        )
+
+    @bentoml.api
+    async def predict(
+        self,
+        prompt: str = sample_prompt,
+    ) -> str:
+        messages = [
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ]
+
+        assistant_response = self.pipe(messages, max_new_tokens=512)[0][
+            "generated_text"
+        ][-1]["content"].strip()  # type: ignore
+        return assistant_response
 
 
 @bentoml.service(
@@ -70,6 +103,7 @@ class FluxText2Image:
 )
 class Flux:
     text2img_service = bentoml.depends(FluxText2Image)
+    text2text_service = bentoml.depends(Text2Text)
 
     @bentoml.api
     async def txt2img(
@@ -79,7 +113,7 @@ class Flux:
         guidance_scale: float = 3.5,
         height: int = 1024,
         width: int = 1024,
-    ) -> dict[str, list[str]]:
+    ) -> Image:
         return await self.text2img_service.predict(
             prompt=prompt,
             num_inference_steps=num_inference_steps,
@@ -87,6 +121,13 @@ class Flux:
             height=height,
             width=width,
         )
+
+    @bentoml.api
+    async def txt2txt(
+        self,
+        prompt: str = sample_prompt,
+    ) -> str:
+        return await self.text2text_service.predict(prompt=prompt)
 
 
 def optimize(pipe, compile=True):
@@ -128,7 +169,7 @@ def optimize(pipe, compile=True):
         num_inference_steps=50,  # use ~50 for [dev], smaller for [schnell]
         height=1024,
         width=1024,
-        num_images_per_prompt=4,
+        num_images_per_prompt=1,
         max_sequence_length=512,
     ).images[0]
 
